@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Backend service
+  pdf-to-html-converter-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pdf-to-html-converter-backend
+    restart: unless-stopped
+    platform: linux/amd64  # Change to linux/arm64 for ARM systems
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-AIzaSyDHKrEkUt2SJWhBvf5YILaGOqFrGfXRUUU}
+      - UPLOAD_DIR=/app/uploads
+      - TEMP_DIR=/app/temp
+      - SCREENSHOTS_DIR=/app/screenshots
+      - MAX_FILE_SIZE=52428800  # 50MB
+      - API_RATE_LIMIT_SECONDS=5
+      - MAX_REFINEMENT_ITERATIONS=2
+    volumes:
+      # Persistent storage for uploads and temporary files
+      - pdf_uploads:/app/uploads
+      - pdf_temp:/app/temp
+      - pdf_screenshots:/app/screenshots
+    networks:
+      - npm_default
+      - internal
+    ports:
+      - "8000:8000"  # Expose for development/testing
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend service  
+  pdf-to-html-converter-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pdf-to-html-converter-frontend
+    restart: unless-stopped
+    platform: linux/amd64  # Change to linux/arm64 for ARM systems
+    hostname: htmlhostname  # For Nginx Proxy Manager
+    depends_on:
+      - pdf-to-html-converter-backend
+    networks:
+      - npm_default
+      - internal
+    ports:
+      - "3000:80"  # Expose for development/testing
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+# Named volumes for persistent data
+volumes:
+  pdf_uploads:
+    driver: local
+  pdf_temp:
+    driver: local
+  pdf_screenshots:
+    driver: local
+
+# Networks
+networks:
+  # External network for Nginx Proxy Manager
+  npm_default:
+    external: true
+  
+  # Internal network for service communication
+  internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
